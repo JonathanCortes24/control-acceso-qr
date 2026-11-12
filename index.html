@@ -4,22 +4,28 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0a2342">
+
   <title>Lector QR - Colegio Piaget</title>
 
   <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 
   <style>
-    * { box-sizing: border-box; }
+    * {
+      box-sizing: border-box;
+    }
 
     body {
       margin: 0;
       padding: 20px;
+      min-height: 100vh;
       background: #f3f6fa;
       font-family: Arial, sans-serif;
       color: #243247;
     }
 
     .contenedor {
+      width: 100%;
       max-width: 520px;
       margin: 25px auto;
       background: white;
@@ -36,10 +42,19 @@
       border-bottom: 5px solid #c89b3c;
     }
 
-    header h1 { font-size: 21px; margin: 0; }
-    header p { font-size: 13px; margin-bottom: 0; }
+    header h1 {
+      font-size: 21px;
+      margin: 0;
+    }
 
-    main { padding: 22px; }
+    header p {
+      font-size: 13px;
+      margin-bottom: 0;
+    }
+
+    main {
+      padding: 22px;
+    }
 
     #qr-reader {
       width: 100%;
@@ -82,6 +97,7 @@
       font-size: 14px;
       line-height: 1.5;
       text-align: center;
+      overflow-wrap: anywhere;
     }
 
     .ayuda {
@@ -91,24 +107,38 @@
       text-align: center;
     }
 
-    .oculto { display: none; }
+    .oculto {
+      display: none;
+    }
+
+    footer {
+      text-align: center;
+      padding: 0 15px 20px;
+      color: #8793a2;
+      font-size: 11px;
+    }
   </style>
 </head>
 
 <body>
+
   <div class="contenedor">
+
     <header>
       <h1>LECTOR QR</h1>
       <p>Colegio Particular Piaget · Licenciatura 4° Medio</p>
     </header>
 
     <main>
+
       <p class="ayuda">
         Apunta la cámara trasera hacia el código QR del alumno.
         El resultado se enviará automáticamente al panel de recepción.
       </p>
 
-      <div id="estado">Preparado para iniciar el escáner.</div>
+      <div id="estado">
+        Preparado para iniciar el escáner.
+      </div>
 
       <div id="qr-reader"></div>
 
@@ -116,63 +146,116 @@
         Activar cámara
       </button>
 
-      <button id="btnCerrar" class="oculto" onclick="cerrarCamara()">
+      <button
+        id="btnCerrar"
+        class="oculto"
+        onclick="cerrarCamara()">
         Cerrar cámara
       </button>
+
     </main>
+
+    <footer>
+      Sistema de Control de Acceso Digital · Colegio Piaget
+    </footer>
+
   </div>
 
 <script>
+
+  // ==========================================
+  // CONFIGURACIÓN DEL PANEL DE RECEPCIÓN
+  // ==========================================
+
   const PARAMETROS = new URLSearchParams(location.search);
+
   const ORIGEN_PADRE = PARAMETROS.get("parentOrigin");
 
   let lector = null;
   let activo = false;
   let procesado = false;
+  let enviando = false;
 
-  // Validación segura del origen de Apps Script.
+
+  // ==========================================
+  // VALIDACIÓN DEL ORIGEN
+  // ==========================================
+
   function validarOrigenPadre() {
-    if (!ORIGEN_PADRE) return false;
+
+    if (!ORIGEN_PADRE) {
+      return false;
+    }
 
     try {
+
       const url = new URL(ORIGEN_PADRE);
 
-      if (url.protocol !== "https:") return false;
+      if (url.protocol !== "https:") {
+        return false;
+      }
 
-      if (url.origin !== ORIGEN_PADRE) return false;
+      if (url.origin !== ORIGEN_PADRE) {
+        return false;
+      }
 
       const host = url.hostname;
 
-      const origenesPermitidos = [
-        "script.google.com",
-        "script.googleusercontent.com"
-      ];
-
       const esGoogleScript =
-        origenesPermitidos.includes(host) ||
+        host === "script.google.com" ||
+        host === "script.googleusercontent.com" ||
+        host.endsWith("-script.googleusercontent.com") ||
         host.endsWith(".script.googleusercontent.com");
 
       return esGoogleScript;
 
     } catch (error) {
+
+      console.error("Error validando origen:", error);
+
       return false;
     }
   }
 
+
+  // ==========================================
+  // MENSAJES DEL SISTEMA
+  // ==========================================
+
   function estado(texto) {
+
     document.getElementById("estado").textContent = texto;
+
   }
 
+
+  // ==========================================
+  // INICIAR CÁMARA
+  // ==========================================
+
   async function iniciarCamara() {
-    if (activo) return;
+
+    if (activo || enviando) {
+      return;
+    }
 
     if (!validarOrigenPadre()) {
-      estado("No se pudo validar el origen del panel de recepción. Abre nuevamente el lector desde el panel.");
+
+      estado(
+        "No se pudo validar el origen del panel de recepción. " +
+        "Abre nuevamente el lector desde el panel."
+      );
+
       return;
     }
 
     if (!window.opener || window.opener.closed) {
-      estado("No se encontró el panel de recepción. Abre el lector desde el panel.");
+
+      estado(
+        "No se encontró el panel de recepción. " +
+        "Abre el lector desde el panel."
+      );
+
       return;
     }
 
@@ -181,12 +264,20 @@
       !navigator.mediaDevices ||
       !navigator.mediaDevices.getUserMedia
     ) {
-      estado("El navegador no permite acceder a la cámara en esta página segura.");
+
+      estado(
+        "El navegador no permite acceder a la cámara en esta página segura."
+      );
+
       return;
     }
 
     if (typeof Html5Qrcode === "undefined") {
-      estado("No se pudo cargar la biblioteca del lector QR. Comprueba internet.");
+
+      estado(
+        "No se pudo cargar la biblioteca del lector QR. Comprueba internet."
+      );
+
       return;
     }
 
@@ -195,31 +286,51 @@
     estado("Solicitando permiso para utilizar la cámara...");
 
     try {
+
       lector = new Html5Qrcode("qr-reader");
 
       await lector.start(
+
         { facingMode: "environment" },
+
         {
           fps: 10,
+
           qrbox: function(ancho, alto) {
+
             const lado = Math.min(ancho, alto, 260);
-            return { width: lado, height: lado };
+
+            return {
+              width: lado,
+              height: lado
+            };
+
           },
+
           aspectRatio: 1
         },
+
         function(texto) {
+
           enviarResultado(texto);
+
         },
+
         function() {}
+
       );
 
       activo = true;
 
-      estado("Cámara activa. Apunta al código QR del alumno.");
+      estado(
+        "Cámara activa. Apunta al código QR del alumno."
+      );
 
-      document.getElementById("btnCerrar").classList.remove("oculto");
+      document.getElementById("btnCerrar")
+        .classList.remove("oculto");
 
     } catch (error) {
+
       console.error("Error de cámara:", error);
 
       document.getElementById("btnIniciar").disabled = false;
@@ -231,89 +342,199 @@
       );
 
       if (lector) {
+
         try {
           await lector.clear();
         } catch (e) {}
 
         lector = null;
       }
+
     }
+
   }
 
+
+  // ==========================================
+  // ENVIAR QR AL PANEL DE RECEPCIÓN
+  // ==========================================
+
   async function enviarResultado(texto) {
-    if (procesado) return;
+
+    if (procesado || enviando) {
+      return;
+    }
 
     procesado = true;
+    enviando = true;
 
     estado("Código QR leído. Enviando al panel de recepción...");
 
     try {
+
       if (lector && activo) {
+
         await lector.stop();
+
       }
-    } catch (e) {}
+
+    } catch (error) {
+
+      console.warn("No se pudo detener automáticamente:", error);
+
+    }
 
     activo = false;
 
     if (!validarOrigenPadre()) {
+
       estado("No se pudo validar el origen del panel de recepción.");
+
       procesado = false;
+      enviando = false;
+
       document.getElementById("btnIniciar").disabled = false;
+
       return;
     }
 
     if (!window.opener || window.opener.closed) {
+
       estado("El panel de recepción ya no está disponible.");
+
       procesado = false;
+      enviando = false;
+
       document.getElementById("btnIniciar").disabled = false;
+
       return;
     }
 
-    // IMPORTANTE:
-    // Estos nombres deben coincidir con el index.html
-    // del panel de recepción de Apps Script.
+    try {
 
-    window.opener.postMessage(
-      {
-        type: "PIAGET_QR_RESULT",
-        text: texto
-      },
-      ORIGEN_PADRE
-    );
+      // IMPORTANTE:
+      // El panel Apps Script espera exactamente
+      // type y text, con este identificador.
 
-    estado("QR enviado correctamente. Regresando al panel de recepción...");
+      window.opener.postMessage(
+        {
+          type: "PIAGET_QR_RESULT",
+          text: texto
+        },
+        ORIGEN_PADRE
+      );
 
-    setTimeout(function() {
-      window.close();
-    }, 900);
+      estado(
+        "QR enviado correctamente. Regresando al panel de recepción..."
+      );
+
+      setTimeout(function() {
+
+        window.close();
+
+      }, 900);
+
+    } catch (error) {
+
+      console.error("Error enviando QR:", error);
+
+      estado("No fue posible enviar el código al panel.");
+
+      procesado = false;
+      enviando = false;
+
+      document.getElementById("btnIniciar").disabled = false;
+
+    }
+
   }
 
+
+  // ==========================================
+  // CERRAR CÁMARA
+  // ==========================================
+
   async function cerrarCamara() {
+
     try {
+
       if (lector && activo) {
+
         await lector.stop();
+
       }
 
       if (lector) {
+
         await lector.clear();
+
       }
-    } catch (e) {}
+
+    } catch (error) {
+
+      console.warn("Error al cerrar cámara:", error);
+
+    }
 
     lector = null;
+
     activo = false;
     procesado = false;
+    enviando = false;
 
     document.getElementById("btnIniciar").disabled = false;
-    document.getElementById("btnCerrar").classList.add("oculto");
+
+    document.getElementById("btnCerrar")
+      .classList.add("oculto");
 
     estado("Cámara cerrada.");
+
   }
 
+
+  // ==========================================
+  // LIMPIEZA AL CERRAR PÁGINA
+  // ==========================================
+
   window.addEventListener("beforeunload", function() {
+
     if (lector && activo) {
+
       lector.stop().catch(function() {});
+
     }
+
   });
+
+
+  // ==========================================
+  // VALIDACIÓN INICIAL
+  // ==========================================
+
+  window.addEventListener("load", function() {
+
+    if (!validarOrigenPadre()) {
+
+      estado(
+        "No se pudo validar el origen del panel de recepción. " +
+        "Abre nuevamente el lector desde el panel."
+      );
+
+      document.getElementById("btnIniciar").disabled = true;
+
+      return;
+    }
+
+    if (!window.opener || window.opener.closed) {
+
+      estado(
+        "Lector preparado. Abre esta página desde el panel de recepción."
+      );
+
+    }
+
+  });
+
 </script>
 
 </body>
