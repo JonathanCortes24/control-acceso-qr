@@ -59,6 +59,11 @@
       margin-top: 12px;
     }
 
+    button:disabled {
+      opacity: .6;
+      cursor: not-allowed;
+    }
+
     #btnIniciar {
       background: #123f6b;
       color: white;
@@ -125,6 +130,35 @@
   let activo = false;
   let procesado = false;
 
+  // Validación segura del origen de Apps Script.
+  function validarOrigenPadre() {
+    if (!ORIGEN_PADRE) return false;
+
+    try {
+      const url = new URL(ORIGEN_PADRE);
+
+      if (url.protocol !== "https:") return false;
+
+      if (url.origin !== ORIGEN_PADRE) return false;
+
+      const host = url.hostname;
+
+      const origenesPermitidos = [
+        "script.google.com",
+        "script.googleusercontent.com"
+      ];
+
+      const esGoogleScript =
+        origenesPermitidos.includes(host) ||
+        host.endsWith(".script.googleusercontent.com");
+
+      return esGoogleScript;
+
+    } catch (error) {
+      return false;
+    }
+  }
+
   function estado(texto) {
     document.getElementById("estado").textContent = texto;
   }
@@ -132,9 +166,21 @@
   async function iniciarCamara() {
     if (activo) return;
 
-    if (!window.isSecureContext ||
-        !navigator.mediaDevices ||
-        !navigator.mediaDevices.getUserMedia) {
+    if (!validarOrigenPadre()) {
+      estado("No se pudo validar el origen del panel de recepción. Abre nuevamente el lector desde el panel.");
+      return;
+    }
+
+    if (!window.opener || window.opener.closed) {
+      estado("No se encontró el panel de recepción. Abre el lector desde el panel.");
+      return;
+    }
+
+    if (
+      !window.isSecureContext ||
+      !navigator.mediaDevices ||
+      !navigator.mediaDevices.getUserMedia
+    ) {
       estado("El navegador no permite acceder a la cámara en esta página segura.");
       return;
     }
@@ -145,6 +191,7 @@
     }
 
     document.getElementById("btnIniciar").disabled = true;
+
     estado("Solicitando permiso para utilizar la cámara...");
 
     try {
@@ -184,7 +231,10 @@
       );
 
       if (lector) {
-        try { await lector.clear(); } catch (e) {}
+        try {
+          await lector.clear();
+        } catch (e) {}
+
         lector = null;
       }
     }
@@ -192,6 +242,7 @@
 
   async function enviarResultado(texto) {
     if (procesado) return;
+
     procesado = true;
 
     estado("Código QR leído. Enviando al panel de recepción...");
@@ -204,30 +255,33 @@
 
     activo = false;
 
-    if (!window.opener || window.opener.closed) {
-      estado("No se encontró el panel de recepción. Vuelve a abrir el lector desde el panel.");
-      procesado = false;
-      document.getElementById("btnIniciar").disabled = false;
-      return;
-    }
-
-    if (!ORIGEN_PADRE ||
-        !/^https:\/\/script\.google(?:usercontent)?\.com$|^https:\/\/script\.google\.com$/.test(ORIGEN_PADRE)) {
+    if (!validarOrigenPadre()) {
       estado("No se pudo validar el origen del panel de recepción.");
       procesado = false;
       document.getElementById("btnIniciar").disabled = false;
       return;
     }
 
+    if (!window.opener || window.opener.closed) {
+      estado("El panel de recepción ya no está disponible.");
+      procesado = false;
+      document.getElementById("btnIniciar").disabled = false;
+      return;
+    }
+
+    // IMPORTANTE:
+    // Estos nombres deben coincidir con el index.html
+    // del panel de recepción de Apps Script.
+
     window.opener.postMessage(
       {
-        tipo: "PIAGET_QR_RESULTADO",
-        contenido: texto
+        type: "PIAGET_QR_RESULT",
+        text: texto
       },
       ORIGEN_PADRE
     );
 
-    estado("QR enviado correctamente. Puedes volver al panel de recepción.");
+    estado("QR enviado correctamente. Regresando al panel de recepción...");
 
     setTimeout(function() {
       window.close();
@@ -261,5 +315,6 @@
     }
   });
 </script>
+
 </body>
 </html>
