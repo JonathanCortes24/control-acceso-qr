@@ -1,0 +1,265 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lector QR - Colegio Piaget</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      padding: 20px;
+      background: #f3f6fa;
+      font-family: Arial, sans-serif;
+      color: #243247;
+    }
+
+    .contenedor {
+      max-width: 520px;
+      margin: 25px auto;
+      background: white;
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 8px 30px rgba(10,35,66,.12);
+    }
+
+    header {
+      padding: 25px 15px;
+      text-align: center;
+      color: white;
+      background: linear-gradient(135deg,#0a2342,#123f6b);
+      border-bottom: 5px solid #c89b3c;
+    }
+
+    header h1 { font-size: 21px; margin: 0; }
+    header p { font-size: 13px; margin-bottom: 0; }
+
+    main { padding: 22px; }
+
+    #qr-reader {
+      width: 100%;
+      margin: 18px auto;
+      overflow: hidden;
+      border-radius: 10px;
+    }
+
+    button {
+      width: 100%;
+      padding: 15px;
+      border: 0;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: bold;
+      cursor: pointer;
+      margin-top: 12px;
+    }
+
+    #btnIniciar {
+      background: #123f6b;
+      color: white;
+    }
+
+    #btnCerrar {
+      background: #c0392b;
+      color: white;
+    }
+
+    #estado {
+      padding: 13px;
+      border-radius: 8px;
+      background: #e8f2fb;
+      color: #17466f;
+      font-size: 14px;
+      line-height: 1.5;
+      text-align: center;
+    }
+
+    .ayuda {
+      color: #68778a;
+      font-size: 13px;
+      line-height: 1.5;
+      text-align: center;
+    }
+
+    .oculto { display: none; }
+  </style>
+</head>
+
+<body>
+  <div class="contenedor">
+    <header>
+      <h1>LECTOR QR</h1>
+      <p>Colegio Particular Piaget · Licenciatura 4° Medio</p>
+    </header>
+
+    <main>
+      <p class="ayuda">
+        Apunta la cámara trasera hacia el código QR del alumno.
+        El resultado se enviará automáticamente al panel de recepción.
+      </p>
+
+      <div id="estado">Preparado para iniciar el escáner.</div>
+
+      <div id="qr-reader"></div>
+
+      <button id="btnIniciar" onclick="iniciarCamara()">
+        Activar cámara
+      </button>
+
+      <button id="btnCerrar" class="oculto" onclick="cerrarCamara()">
+        Cerrar cámara
+      </button>
+    </main>
+  </div>
+
+<script>
+  const PARAMETROS = new URLSearchParams(location.search);
+  const ORIGEN_PADRE = PARAMETROS.get("parentOrigin");
+
+  let lector = null;
+  let activo = false;
+  let procesado = false;
+
+  function estado(texto) {
+    document.getElementById("estado").textContent = texto;
+  }
+
+  async function iniciarCamara() {
+    if (activo) return;
+
+    if (!window.isSecureContext ||
+        !navigator.mediaDevices ||
+        !navigator.mediaDevices.getUserMedia) {
+      estado("El navegador no permite acceder a la cámara en esta página segura.");
+      return;
+    }
+
+    if (typeof Html5Qrcode === "undefined") {
+      estado("No se pudo cargar la biblioteca del lector QR. Comprueba internet.");
+      return;
+    }
+
+    document.getElementById("btnIniciar").disabled = true;
+    estado("Solicitando permiso para utilizar la cámara...");
+
+    try {
+      lector = new Html5Qrcode("qr-reader");
+
+      await lector.start(
+        { facingMode: "environment" },
+        {
+          fps: 10,
+          qrbox: function(ancho, alto) {
+            const lado = Math.min(ancho, alto, 260);
+            return { width: lado, height: lado };
+          },
+          aspectRatio: 1
+        },
+        function(texto) {
+          enviarResultado(texto);
+        },
+        function() {}
+      );
+
+      activo = true;
+
+      estado("Cámara activa. Apunta al código QR del alumno.");
+
+      document.getElementById("btnCerrar").classList.remove("oculto");
+
+    } catch (error) {
+      console.error("Error de cámara:", error);
+
+      document.getElementById("btnIniciar").disabled = false;
+
+      estado(
+        "No fue posible activar la cámara. " +
+        (error.name || "Error") + ": " +
+        (error.message || "Permiso denegado")
+      );
+
+      if (lector) {
+        try { await lector.clear(); } catch (e) {}
+        lector = null;
+      }
+    }
+  }
+
+  async function enviarResultado(texto) {
+    if (procesado) return;
+    procesado = true;
+
+    estado("Código QR leído. Enviando al panel de recepción...");
+
+    try {
+      if (lector && activo) {
+        await lector.stop();
+      }
+    } catch (e) {}
+
+    activo = false;
+
+    if (!window.opener || window.opener.closed) {
+      estado("No se encontró el panel de recepción. Vuelve a abrir el lector desde el panel.");
+      procesado = false;
+      document.getElementById("btnIniciar").disabled = false;
+      return;
+    }
+
+    if (!ORIGEN_PADRE ||
+        !/^https:\/\/script\.google(?:usercontent)?\.com$|^https:\/\/script\.google\.com$/.test(ORIGEN_PADRE)) {
+      estado("No se pudo validar el origen del panel de recepción.");
+      procesado = false;
+      document.getElementById("btnIniciar").disabled = false;
+      return;
+    }
+
+    window.opener.postMessage(
+      {
+        tipo: "PIAGET_QR_RESULTADO",
+        contenido: texto
+      },
+      ORIGEN_PADRE
+    );
+
+    estado("QR enviado correctamente. Puedes volver al panel de recepción.");
+
+    setTimeout(function() {
+      window.close();
+    }, 900);
+  }
+
+  async function cerrarCamara() {
+    try {
+      if (lector && activo) {
+        await lector.stop();
+      }
+
+      if (lector) {
+        await lector.clear();
+      }
+    } catch (e) {}
+
+    lector = null;
+    activo = false;
+    procesado = false;
+
+    document.getElementById("btnIniciar").disabled = false;
+    document.getElementById("btnCerrar").classList.add("oculto");
+
+    estado("Cámara cerrada.");
+  }
+
+  window.addEventListener("beforeunload", function() {
+    if (lector && activo) {
+      lector.stop().catch(function() {});
+    }
+  });
+</script>
+</body>
+</html>
